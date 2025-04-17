@@ -1,0 +1,4 @@
+cd "C:\Project_Tiennm\Bao cao danh gia kiem tra dinh ky do dem"
+Set-ExecutionPolicy RemoteSigned -Scope Process
+& .\.venv\Scripts\Activate.ps1
+streamlit run Reportall.py

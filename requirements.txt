@@ -1,5 +1,7 @@
 streamlit
 pandas
 matplotlib
-python-docx
 openpyxl
+python-docx
+chromadb
+tornado==6.1
