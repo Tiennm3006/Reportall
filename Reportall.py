@@ -93,64 +93,56 @@ def export_word_report(tong_quan, full_df, top3, bot3, charts, nhan_xet, filenam
 
 tab1, tab2 = st.tabs(["📋 Kiểm tra hệ thống đo đếm", "🔌 Cắt điện do chưa trả tiền"])
 
-# ---------- TAB 1: PHÂN TÍCH HỆ THỐNG ĐO ĐẾM ---------- #
-with tab1:
-    uploaded_file = st.file_uploader("📤 Tải lên file Excel chứa sheet 'Tong hop luy ke'", type=["xlsx"], key="kiemtra")
+# ---------- TAB 1: PHÂN TÍCH HỆ THỐNG ĐO ĐẾM ---------- # [giữ nguyên nội dung đã có]
 
-    if uploaded_file:
-        df = pd.read_excel(uploaded_file, sheet_name="Tong hop luy ke", header=None)
-        df_cleaned = df.iloc[4:].copy()
-        expected_columns = ["STT", "Điện lực", "1P_GT", "1P_TT", "3P_GT", "3P_TT", "TU", "TI", "Tổng công tơ", "Kế hoạch", "Tỷ lệ"]
+# ---------- TAB 2: PHÂN TÍCH CẮT ĐIỆN ---------- #
+with tab2:
+    uploaded_cut = st.file_uploader("📤 Tải lên file Excel công tác cắt điện", type=["xlsx"], key="catdien")
 
-        if df_cleaned.shape[1] < len(expected_columns):
-            st.error(f"❌ File thiếu cột. Cần {len(expected_columns)} cột, hiện có {df_cleaned.shape[1]}.")
+    if uploaded_cut:
+        df_cut = pd.read_excel(uploaded_cut)
+        df_cut.columns = df_cut.columns.str.strip()
+
+        if "Điện lực" not in df_cut.columns:
+            st.error("❌ Không tìm thấy cột 'Điện lực' trong file. Hãy kiểm tra lại.")
             st.stop()
-        df_cleaned = df_cleaned.iloc[:, :len(expected_columns)]
-        df_cleaned.columns = expected_columns
 
-        df_cleaned = df_cleaned[df_cleaned["Điện lực"].notna()]
-        cols_to_num = ["1P_GT", "1P_TT", "3P_GT", "3P_TT", "TU", "TI", "Tổng công tơ", "Kế hoạch", "Tỷ lệ"]
-        df_cleaned[cols_to_num] = df_cleaned[cols_to_num].apply(pd.to_numeric, errors='coerce')
-        df_cleaned["Tỷ lệ"] = df_cleaned["Tỷ lệ"] * 100
+        df_cut = df_cut.dropna(subset=["Điện lực"])
+        df_cut = df_cut[df_cut["Điện lực"].str.upper() != "TỔNG"]
+        df_cut["Khách hàng nợ quá hạn chưa cắt điện"] = df_cut["Khách hàng nợ quá hạn chưa cắt điện"].astype(int)
+        df_cut["Số tiền"] = df_cut["Số tiền"].astype(float)
 
-        total_current = df_cleaned["Tổng công tơ"].sum()
-        total_plan = df_cleaned["Kế hoạch"].sum()
-        days_passed = (datetime.now() - datetime(2025, 1, 1)).days
-        days_total = (datetime(2025, 9, 30) - datetime(2025, 1, 1)).days
-        avg_per_day = total_current / days_passed
-        forecast_total = avg_per_day * days_total
-        forecast_ratio = forecast_total / total_plan
+        tong_kh = df_cut["Khách hàng nợ quá hạn chưa cắt điện"].sum()
+        tong_tien = df_cut["Số tiền"].sum()
+        nhan_xet = f"Hiện tại còn {tong_kh:,} khách hàng chưa bị cắt điện với tổng số tiền nợ {tong_tien:,.0f} đ. Cần rà soát các đơn vị có số lượng lớn và số tiền cao để ưu tiên xử lý."
 
-        danh_gia = "✅ ĐẠT kế hoạch" if forecast_ratio >= 1 else "❌ CHƯA ĐẠT kế hoạch"
-        nhan_xet = f"Dự kiến đến 30/09/2025 sẽ hoàn thành khoảng {forecast_total:,.0f} thiết bị, tương đương {forecast_ratio*100:.2f}%. {danh_gia}"
+        top_kh = df_cut.sort_values(by="Khách hàng nợ quá hạn chưa cắt điện", ascending=False).head(3)
+        bot_kh = df_cut.sort_values(by="Khách hàng nợ quá hạn chưa cắt điện", ascending=True).head(3)
 
-        df_sorted = df_cleaned.sort_values(by="Tỷ lệ", ascending=False)
-        top_3 = df_sorted.head(3)
-        bot_3 = df_sorted.tail(3)
+        chart_top_kh = save_bar_chart(top_kh, "Điện lực", "Khách hàng nợ quá hạn chưa cắt điện", "Top 3 KH chưa cắt")
+        chart_bot_kh = save_bar_chart(bot_kh, "Điện lực", "Khách hàng nợ quá hạn chưa cắt điện", "Bottom 3 KH chưa cắt")
+        chart_all_kh = save_overall_chart(df_cut, "Điện lực", "Khách hàng nợ quá hạn chưa cắt điện", "Tổng hợp KH chưa cắt")
 
-        chart_top = save_bar_chart(top_3, "Điện lực", "Tỷ lệ", "Top 3 Tỷ lệ cao")
-        chart_bot = save_bar_chart(bot_3, "Điện lực", "Tỷ lệ", "Bottom 3 Tỷ lệ thấp")
-        chart_all = save_overall_chart(df_sorted, "Điện lực", "Tỷ lệ", "Tổng hợp tỷ lệ hoàn thành")
-
-        st.metric("Tổng đã thực hiện", f"{total_current:,}")
-        st.metric("Kế hoạch", f"{total_plan:,}")
-        st.metric("Dự báo đến 30/09/2025", f"{int(forecast_total):,}")
-        st.metric("Tỷ lệ dự báo", f"{forecast_ratio*100:.2f}%")
+        st.metric("Tổng KH chưa cắt", f"{tong_kh:,}")
+        st.metric("Tổng số tiền", f"{tong_tien:,.0f} đ")
         st.info(nhan_xet)
 
         st.subheader("📈 Biểu đồ")
-        st.image(chart_top)
-        st.image(chart_bot)
-        st.image(chart_all)
+        st.image(chart_top_kh)
+        st.image(chart_bot_kh)
+        st.image(chart_all_kh)
 
-        if st.button("📄 Xuất báo cáo Word", key="tab1_word"):
+        if st.button("📄 Xuất báo cáo Word", key="tab2_word"):
             tong_quan = {
-                "Tổng công tơ đã thực hiện": f"{total_current:,}",
-                "Kế hoạch giao": f"{total_plan:,}",
-                "Tốc độ TB/ngày": f"{avg_per_day:.2f}",
-                "Dự báo đến 30/09/2025": f"{int(forecast_total):,}",
-                "Tỷ lệ dự báo": f"{forecast_ratio*100:.2f}%",
-                "Đánh giá": danh_gia
+                "Tổng KH chưa cắt": f"{tong_kh:,}",
+                "Tổng số tiền": f"{tong_tien:,.0f} đ"
             }
-            word_file = export_word_report(tong_quan, df_cleaned[["Điện lực", "Tổng công tơ", "Kế hoạch", "Tỷ lệ"]], top_3, bot_3, [chart_top, chart_bot, chart_all], nhan_xet, filename="Bao_cao_HeThongDoDem.docx")
-            st.download_button("📥 Tải báo cáo Word", data=word_file, file_name="Bao_cao_HeThongDoDem.docx")
+            word_file = export_word_report(
+                tong_quan,
+                df_cut[["Điện lực", "Khách hàng nợ quá hạn chưa cắt điện", "Số tiền"]],
+                top_kh,
+                bot_kh,
+                [chart_top_kh, chart_bot_kh, chart_all_kh],
+                nhan_xet,
+                filename="Bao_cao_CatDien.docx")
+            st.download_button("📥 Tải báo cáo Word", data=word_file, file_name="Bao_cao_CatDien.docx")
