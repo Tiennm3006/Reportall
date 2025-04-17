@@ -1,4 +1,3 @@
-# Phần import và khởi tạo giao diện
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -12,8 +11,87 @@ from io import BytesIO
 st.set_page_config(page_title="Báo cáo công tác kinh doanh", layout="wide")
 st.title("📊 Báo cáo công tác kinh doanh")
 
-tab1, tab2 = st.tabs(["📋 Kiểm tra hệ thống đo đếm", "🔌 Cắt điện do chưa trả tiền"])
+def save_bar_chart(data, x_col, y_col, title):
+    fig, ax = plt.subplots()
+    ax.bar(data[x_col], data[y_col])
+    ax.set_title(title)
+    ax.set_ylabel(y_col)
+    ax.tick_params(axis='x', rotation=45)
+    fig.tight_layout()
+    buffer = BytesIO()
+    fig.savefig(buffer, format='png')
+    plt.close(fig)
+    buffer.seek(0)
+    return buffer
 
+def save_overall_chart(data, x_col, y_col, title):
+    fig, ax = plt.subplots(figsize=(10, 5))
+    bars = ax.bar(data[x_col], data[y_col])
+    ax.set_title(title)
+    ax.set_ylabel(y_col)
+    ax.tick_params(axis='x', rotation=45)
+    for bar in bars:
+        height = bar.get_height()
+        ax.annotate(f"{height:,.0f}", xy=(bar.get_x() + bar.get_width() / 2, height),
+                    xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+    fig.tight_layout()
+    buffer = BytesIO()
+    fig.savefig(buffer, format='png')
+    plt.close(fig)
+    buffer.seek(0)
+    return buffer
+
+def set_table_border(table):
+    tbl = table._tbl
+    tblPr = tbl.tblPr if tbl.tblPr is not None else tbl._element.get_or_add_tblPr()
+    tblBorders = OxmlElement('w:tblBorders')
+    for border_name in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
+        border = OxmlElement(f'w:{border_name}')
+        border.set(qn('w:val'), 'single')
+        border.set(qn('w:sz'), '4')
+        border.set(qn('w:space'), '0')
+        border.set(qn('w:color'), 'auto')
+        tblBorders.append(border)
+    tblPr.append(tblBorders)
+
+def export_word_report(tong_quan, full_df, top3, bot3, charts, nhan_xet, filename):
+    doc = Document()
+    doc.add_heading("BÁO CÁO ĐÁNH GIÁ", 0)
+
+    doc.add_heading("Tổng quan", level=1)
+    for k, v in tong_quan.items():
+        doc.add_paragraph(f"{k}: {v}")
+
+    doc.add_heading("Nhận xét", level=1)
+    doc.add_paragraph(nhan_xet)
+
+    def add_table(title, df):
+        doc.add_heading(title, level=2)
+        table = doc.add_table(rows=1, cols=len(df.columns))
+        table.style = 'Table Grid'
+        hdr_cells = table.rows[0].cells
+        for i, col in enumerate(df.columns):
+            hdr_cells[i].text = str(col)
+        for _, row in df.iterrows():
+            row_cells = table.add_row().cells
+            for i, val in enumerate(row):
+                row_cells[i].text = str(val)
+        set_table_border(table)
+
+    add_table("Toàn bộ dữ liệu", full_df)
+    add_table("Top 3 cao nhất", top3)
+    add_table("Top 3 thấp nhất", bot3)
+
+    doc.add_heading("Biểu đồ minh họa", level=1)
+    for chart in charts:
+        doc.add_picture(chart, width=Inches(5.5))
+
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+tab1, tab2 = st.tabs(["📋 Kiểm tra hệ thống đo đếm", "🔌 Cắt điện do chưa trả tiền"])
 
 # ---------- TAB 1: PHÂN TÍCH HỆ THỐNG ĐO ĐẾM ---------- #
 with tab1:
@@ -22,7 +100,14 @@ with tab1:
     if uploaded_file:
         df = pd.read_excel(uploaded_file, sheet_name="Tong hop luy ke", header=None)
         df_cleaned = df.iloc[4:].copy()
-        df_cleaned.columns = ["STT", "Điện lực", "1P_GT", "1P_TT", "3P_GT", "3P_TT", "TU", "TI", "Tổng công tơ", "Kế hoạch", "Tỷ lệ"]
+        expected_columns = ["STT", "Điện lực", "1P_GT", "1P_TT", "3P_GT", "3P_TT", "TU", "TI", "Tổng công tơ", "Kế hoạch", "Tỷ lệ"]
+
+        if df_cleaned.shape[1] < len(expected_columns):
+            st.error(f"❌ File thiếu cột. Cần {len(expected_columns)} cột, hiện có {df_cleaned.shape[1]}.")
+            st.stop()
+        df_cleaned = df_cleaned.iloc[:, :len(expected_columns)]
+        df_cleaned.columns = expected_columns
+
         df_cleaned = df_cleaned[df_cleaned["Điện lực"].notna()]
         cols_to_num = ["1P_GT", "1P_TT", "3P_GT", "3P_TT", "TU", "TI", "Tổng công tơ", "Kế hoạch", "Tỷ lệ"]
         df_cleaned[cols_to_num] = df_cleaned[cols_to_num].apply(pd.to_numeric, errors='coerce')
@@ -30,8 +115,7 @@ with tab1:
 
         total_current = df_cleaned["Tổng công tơ"].sum()
         total_plan = df_cleaned["Kế hoạch"].sum()
-        current_date = datetime.now()
-        days_passed = (current_date - datetime(2025, 1, 1)).days
+        days_passed = (datetime.now() - datetime(2025, 1, 1)).days
         days_total = (datetime(2025, 9, 30) - datetime(2025, 1, 1)).days
         avg_per_day = total_current / days_passed
         forecast_total = avg_per_day * days_total
