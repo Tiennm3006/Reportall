@@ -1,4 +1,19 @@
-# [Giữ nguyên phần import và định nghĩa hàm xử lý như hiện tại]
+# Phần import và khởi tạo giao diện
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+from datetime import datetime
+from docx import Document
+from docx.shared import Inches
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
+from io import BytesIO
+
+st.set_page_config(page_title="Báo cáo công tác kinh doanh", layout="wide")
+st.title("📊 Báo cáo công tác kinh doanh")
+
+tab1, tab2 = st.tabs(["📋 Kiểm tra hệ thống đo đếm", "🔌 Cắt điện do chưa trả tiền"])
+
 
 # ---------- TAB 1: PHÂN TÍCH HỆ THỐNG ĐO ĐẾM ---------- #
 with tab1:
